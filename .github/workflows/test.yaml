@@ -28,10 +28,61 @@ jobs:
           host: ${{ secrets.DOCKER_HOST }}
           port: ${{ secrets.DOCKER_PORT }}
           user: ${{ secrets.DOCKER_USER }}
-          #pass: ${{ secrets.DOCKER_PASS }}
           ssh_key: "${{ secrets.DOCKER_SSH_KEY }}"
           file: "docker-compose.yaml"
           name: "test-stack"
+
+  test_registry_auth:
+    name: "Test Registry Auth"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Create SSH directory"
+        run: mkdir -p ~/.ssh
+
+      - name: "Add private key to SSH agent"
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.DOCKER_SSH_KEY }}
+
+      - name: "Do not check host key"
+        run: |
+          export ANSIBLE_HOST_KEY_CHECKING=False
+
+      - name: Run playbook
+        uses: dawidd6/action-ansible-playbook@v2
+        with:
+          playbook: actions_test.yml
+          directory: ansible
+          options: |
+            -u ${{ secrets.DOCKER_USER }}
+            --private-key ./ssh_key
+            -i ${{ secrets.DOCKER_HOST }},
+            -c ssh
+            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
+
+      - name: "Write YAML"
+        id: yaml-action
+        uses: teunmooij/yaml@v1
+        with:
+          data: '{"version":"3.8","services":{"alpine":{"image":"localhost:5000/alpine","command":"tail -f /dev/null"}}}'
+          to-file: "docker-compose.yaml"
+
+      - name: "Test Local Action with Registry Auth"
+        id: test
+        uses: ./
+        with:
+          host: ${{ secrets.DOCKER_HOST }}
+          port: ${{ secrets.DOCKER_PORT }}
+          user: ${{ secrets.DOCKER_USER }}
+          ssh_key: "${{ secrets.DOCKER_SSH_KEY }}"
+          file: "docker-compose.yaml"
+          name: "test-private-stack"
+          with_registry_auth: "true"
 
   lint:
     name: "Lint"
